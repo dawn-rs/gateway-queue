@@ -122,22 +122,28 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             lock.1 -= 1;
                         } else {
                             time::sleep_until(lock.0).await;
-                            if let Ok(res) = client.gateway().authed().await {
-                                if let Ok(info) = res.model().await {
-                                    let session = info.session_start_limit;
-                                    let reset_after = Duration::from_millis(session.reset_after);
-                                    info!("next session start limit in: {reset_after:.2?}");
+                            'label: {
+                                if let Ok(res) = client.gateway().authed().await {
+                                    if let Ok(info) = res.model().await {
+                                        let session = info.session_start_limit;
+                                        let reset_after =
+                                            Duration::from_millis(session.reset_after);
+                                        info!("next session start limit in: {reset_after:.2?}");
 
-                                    lock.1 = session.remaining;
-                                    lock.0 = time::Instant::now() + reset_after;
+                                        lock.1 = session.remaining;
+                                        lock.0 = time::Instant::now() + reset_after;
 
-                                    queue.update(
-                                        session.max_concurrency,
-                                        session.remaining,
-                                        reset_after,
-                                        session.total,
-                                    );
+                                        queue.update(
+                                            session.max_concurrency,
+                                            session.remaining,
+                                            reset_after,
+                                            session.total,
+                                        );
+                                        break 'label;
+                                    }
                                 }
+
+                                warn!("unable to get new session limits, skipping (this may cause bad things)");
                             }
                         }
                     }
